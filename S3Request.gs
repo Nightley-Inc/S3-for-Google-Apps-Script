@@ -1,3 +1,9 @@
+
+
+//constants
+var SECONDS_PER_DAY = 86400;
+var DEFAULT_REGION = "us-east-1";
+
 /* constructs an S3Request to an S3 service
  *
  * @constructor
@@ -22,7 +28,7 @@ function S3Request(service) {
  * @return {S3Request} this request, for chaining
  */
 S3Request.prototype.setContentType = function (contentType) {
-  if (typeof contentType != 'string') throw 'contentType must be passed as a string';
+  if (typeof contentType != 'string') throw "contentType must be passed as a string";
   this.contentType = contentType;
   return this;
 };
@@ -47,7 +53,7 @@ S3Request.prototype.getContentType = function () {
  * @return {S3Request} this request, for chaining
  */ 
 S3Request.prototype.setContent = function(content) {
-  if (typeof content != 'string') throw 'content must be passed as a string'
+  if (typeof content != 'string') throw "content must be passed as a string"
   this.content = content; 
   return this;
 };
@@ -188,6 +194,229 @@ S3Request.prototype.execute = function(options) {
 };
 
 
+/* get a presigned URL for an object
+ * @author David Su <david.d.su@gmail.com>
+ * @param {Object} options options to be passed in ("expires", "testing")
+ * @return {string} the URL
+ */ 
+S3Request.prototype.getSignedUrl = function(options) {
+  var url = this.getUrl();
+  var accessKeyId = this.service.accessKeyId;
+  
+  options["expires"] = options["expires"] || SECONDS_PER_DAY; // default to one day.
+  if (options["expires"] < 1 || options["expires"] > 7*SECONDS_PER_DAY) {
+    throw new "'expires' option must be within 1 and 604800 seconds (7 days), inclusive";
+  }
+  
+  var url = this.authenticate(options, "url");
+
+  return url;
+};
+
+/* authenticate a request using query parameters according to
+ * AWS Signature Version 4
+ * @author David Su <david.d.su@gmail.com>
+ *
+ * @param {Object} options options to be passed in ("expires", "testing")
+ * @param {string} mode determine what to return: "signature" or "url"
+ * @return {string} the final URL or signature
+ */ 
+S3Request.prototype.authenticate = function(options, mode) {
+  options = options || {};
+
+  // 1a. CanonicalRequest
+  // https://s3.amazonaws.com/examplebucket/test.txt
+  // ?X-Amz-Algorithm=AWS4-HMAC-SHA256
+  // &X-Amz-Credential=<your-access-key-id>/20130721/us-east-1/s3/aws4_request
+  // &X-Amz-Date=20130721T201207Z
+  // &X-Amz-Expires=86400
+  // &X-Amz-SignedHeaders=host
+  // &X-Amz-Signature=<signature-value> 
+
+  var canonicalRequest = "";
+
+  //    i. HTTP verb
+  canonicalRequest += this.httpMethod + "\n";
+
+  //    ii. Canonical URI
+  var canonicalizedResource = this.getUrl().replace("http://"+this.bucket.toLowerCase()+".s3.amazonaws.com","");
+  canonicalizedResource = encodeURIComponent(canonicalizedResource).replace(/%2F/g, "/");
+  canonicalRequest += canonicalizedResource + "\n";
+
+  //    iii. Canonical Query String
+  
+  //          - algorithm
+  var amzAlgorithm = "AWS4-HMAC-SHA256";
+  
+  var canonicalQueryString = "X-Amz-Algorithm=" + amzAlgorithm;
+
+  //          - credentials
+  var date = new Date();
+  if ("signatureTesting" in options && options.signatureTesting == true) {
+      date = new Date(Date.UTC("2013", "04", "24")); // testing with default
+  }
+  var dateStr = date.getUTCFullYear() + ("0" + (date.getUTCMonth()+1) ).slice(-2) + ("0" + date.getUTCDate()).slice(-2)
+  
+  var region = options.region || DEFAULT_REGION;
+  
+  var amzCredentialParts = [this.service.accessKeyId, dateStr, region, "s3", "aws4_request"];
+  
+  canonicalQueryString += "&X-Amz-Credential=" + amzCredentialParts.join("%2F");
+
+  //          - date
+  var timeStr = ("0" + date.getUTCHours()).slice(-2) + ("0" + date.getUTCMinutes()).slice(-2) + ("0" + date.getUTCSeconds()).slice(-2);
+  var timestamp = dateStr + "T" + timeStr + "Z"; // utc
+  canonicalQueryString += "&X-Amz-Date=" + timestamp;
+
+
+  //          - expires
+  var expires = 86400; // 24 hours
+  if (options.hasOwnProperty("expires")) {
+    expires = options.expires;
+  }
+  canonicalQueryString += "&X-Amz-Expires=" + expires;
+
+
+  //          - signed headers
+  var amzHeaders = ["host:" + this.bucket.toLowerCase()+".s3.amazonaws.com"]; //, "x-amz-date:" + timestamp];
+  var signedHeaders = ["host"]; //, "x-amz-date"];
+
+  for (var headerName in this.headers) {
+    // only AMZ headers
+    // convert to lower case (1)
+    // multi-line headers to single line (4)
+    // one space after : (5)
+    if (headerName.match(/^x-amz/i)) {
+      var header = headerName.toLowerCase() + ":" + this.headers[headerName].trim();
+      amzHeaders.push(header);
+      signedHeaders.push(headerName.toLowerCase());
+    }
+  }
+
+  var canonicalHeaderStr = amzHeaders.sort().join("\n") + "\n";
+  canonicalQueryString += "&X-Amz-SignedHeaders=" + signedHeaders.sort().join(";"); // <- TODO: figure out if this is the right delimiter
+
+  canonicalRequest += canonicalQueryString + "\n";
+
+  //    iv. Canonical Headers
+  canonicalRequest += canonicalHeaderStr + "\n";
+  canonicalRequest +=  "\n"; // <- TODO: figure out what to put here 
+
+  //    v. Signed Headers
+  canonicalRequest += signedHeaders.sort().join(";") + "\n";
+
+  //    vi. Unsigned Payload
+  canonicalRequest += "UNSIGNED-PAYLOAD";
+  
+  // 1b. StringToSign
+  var stringToSign = "";
+
+  // algorithm
+  stringToSign += amzAlgorithm + "\n";
+
+  // date
+  stringToSign += timestamp + "\n";
+
+  // scope
+  stringToSign += dateStr + "/" + region + "/" + "s3" + "/" + "aws4_request" + "\n";
+
+  // hexed and hashed
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, canonicalRequest, Utilities.Charset.UTF_8);
+  var digestStr = this.bytearrayToHex_(digest);
+
+  stringToSign += digestStr;
+  
+  // 2. SigningKey
+  // NOTE: We have to use the CryptoJS.HmacSHA256 here because it's broken with Utilities.computeHmacSha256Signature
+  // TODO: figure out exactly why this is so ^
+  
+  // var dateKey = this.unsignBytearray_(Utilities.computeHmacSha256Signature(dateStr, "AWS4" + this.service.secretAccessKey, Utilities.Charset.UTF_8));
+  // Logger.log("dateKey:\n" + this.bytearrayToHex_(dateKey));
+  // var dateRegionKey = this.unsignBytearray_(Utilities.computeHmacSha256Signature(region, dateKey, Utilities.Charset.UTF_8));
+  // var dateRegionServiceKey = this.unsignBytearray_(Utilities.computeHmacSha256Signature("s3", dateRegionKey, Utilities.Charset.UTF_8));
+  // var signingKey = this.unsignBytearray_(Utilities.computeHmacSha256Signature("aws4_request", dateRegionServiceKey, Utilities.Charset.UTF_8));
+  // Logger.log("SigningKey:\n" + this.bytearrayToHex_(signingKey));
+
+  var signingKey = this.getSignatureKey_(this.service.secretAccessKey, dateStr, region, "s3");
+
+
+  // 3. Signature
+
+  var signature = CryptoJS.HmacSHA256(stringToSign, signingKey, { asBytes: true });
+  
+  if (mode == "signature") {
+    return signature;
+  }
+
+  var url = this.getUrl();
+  url += "?" + canonicalQueryString
+  url += "&X-Amz-Signature=" + signature;
+
+  url = url.replace(/ /g, "%20");
+
+  return url;
+};
+
+
+/* convert an array of signed bytes to hex encoding
+ * @author David Su <david.d.su@gmail.com>
+ *
+ * @private
+ * @param {Array} byteArr the array of bytes
+ * @return {string} the hex-encoded string
+ */
+S3Request.prototype.bytearrayToHex_ = function(byteArr) {
+  var hexStr = "";
+  for (var i=0; i<byteArr.length; i++) {
+    var b = byteArr[i];
+    if (b < 0) {
+      b += 256;
+    }
+    var bStr = b.toString(16);
+    if (bStr.length == 1) {
+      bStr = "0" + bStr;
+    }
+    hexStr += bStr;
+  }
+  return hexStr;
+};
+
+/* convert an array of signed bytes to unsigned bytes
+ * @author David Su <david.d.su@gmail.com>
+ *
+ * @private
+ * @param {Array} byteArr the array of bytes
+ * @return {Array} the array of unsigned bytes
+ */
+S3Request.prototype.unsignBytearray_ = function(byteArr) {
+  for (var i=0; i<byteArr.length; i++) {
+    if (byteArr[i] < 0) {
+      byteArr[i] += 256;
+    }
+  }
+  return byteArr;
+};
+
+/* calculate the key used to sign signature according to AWS Signature v4
+ * from the examples at http://docs.aws.amazon.com/general/latest/gr/signature-v4-examples.html
+ * NOTE: make sure asBytes is set to true!
+ *
+ * @private
+ * @param {string} key base64-encoded key
+ * @param {string} dateStamp the date in format <yyyymmdd>
+ * @param {string} regionName name of the region, e.g. "us-east-1"
+ * @param {string} serviceName name of the service, e.g. "s3" or "iam"
+ * @return {string} base64-encoded signing key
+ */
+S3Request.prototype.getSignatureKey_ = function(key, dateStamp, regionName, serviceName) {
+   var kDate = CryptoJS.HmacSHA256(dateStamp, "AWS4" + key, { asBytes: true})
+   var kRegion = CryptoJS.HmacSHA256(regionName, kDate, { asBytes: true });
+   var kService = CryptoJS.HmacSHA256(serviceName, kRegion, { asBytes: true });
+   var kSigning = CryptoJS.HmacSHA256("aws4_request", kService, { asBytes: true });
+
+   return kSigning;
+};
+
 /* computes Authorization Header value for S3 request
  * reference http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html
  *
@@ -196,53 +425,7 @@ S3Request.prototype.execute = function(options) {
  */
 S3Request.prototype.getAuthHeader_ = function () {
     
-//  StringToSign = HTTP-VERB + "\n" +
-//    Content-MD5 + "\n" +
-//    Content-Type + "\n" +
-//    Date + "\n" +
-//    CanonicalizedAmzHeaders +
-//    CanonicalizedResource;    
-  var stringToSign = this.httpMethod + "\n";
-  
-  var contentLength = this.content.length;
-  stringToSign += this.getContentMd5_() + "\n" ;
-  stringToSign += this.getContentType() + "\n";
-
-  
-  //set expires time 60 seconds into future
-  stringToSign += this.date.toUTCString() + "\n";
-
-
-  // Construct Canonicalized Amazon Headers
-  //http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html#RESTAuthenticationRequestCanonicalization
-  var amzHeaders = [];
-  
-  for (var headerName in this.headers) {
-    // only AMZ headers
-    // convert to lower case (1)
-    // multi-line headers to single line (4)
-    // one space after : (5)
-    if (headerName.match(/^x-amz/i)) {
-      var header = headerName.toLowerCase() + ":" + this.headers[headerName].replace(/\s+/, " ");
-      amzHeaders.push(header) 
-    }
-  }
-  // (3) is just that multiple values of the same header must be passed as CSV, rather than listed multiple times; implicit
-  // sort lexographically (2), and combine into string w single \n separating each (6)
-  if (amzHeaders.length > 0) {
-    stringToSign += amzHeaders.sort().join("\n") + "\n";
-  }
-  
-  var canonicalizedResource = "/" + this.bucket.toLowerCase() + this.getUrl().replace("http://"+this.bucket.toLowerCase()+".s3.amazonaws.com","");
-  stringToSign += canonicalizedResource;
-  
-//  Logger.log("-- string to sign --\n"+stringToSign);
-  
-  //Signature = Base64( HMAC-SHA1( YourSecretAccessKeyID, UTF-8-Encoding-Of( StringToSign ) ) );  
-  var signature = Utilities.base64Encode(Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, 
-                                                                        stringToSign, 
-                                                                        this.service.secretAccessKey, 
-                                                                        Utilities.Charset.UTF_8));
+  var signature = this.authenticate({}, "signature");
       
   return "AWS " + this.service.accessKeyId + ':' + signature; 
 };

@@ -199,6 +199,26 @@ S3.prototype.deleteObject = function (bucket, objectName, options) {
   request.execute(options);  
 };
 
+/* get a presigned URL for an object
+ * @author David Su <david.d.su@gmail.com>
+ *
+ * @param {string} bucket bucket name
+ * @param {string} objectName name that uniquely identifies object within bucket
+ * @param {Object} options optional parameters ("expires", "testing")
+ * @return {string} the URL
+ */
+S3.prototype.getSignedUrl = function(bucket, objectName, options) {
+  options = options || {};
+  
+  var request = new S3Request(this);
+  request.setHttpMethod('GET');
+  
+  request.setBucket(bucket);
+  request.setObjectName(objectName);
+
+  // return request.authenticate(options);
+  return request.getSignedUrl(options);
+}
 
 //for debugging
 S3.prototype.getLastExchangeLog = function() {
