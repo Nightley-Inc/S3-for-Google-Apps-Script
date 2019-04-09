@@ -53,15 +53,13 @@ function getInstance(accessKeyId, secretAccessKey, options) {
  * @param {Object} options key-value object of options, unused
  */
 function S3(accessKeyId, secretAccessKey, options) {
-  if (typeof accessKeyId !== 'string') throw "Must pass accessKeyId to S3 constructor";
-  if (typeof secretAccessKey !== 'string') throw "Must pass secretAcessKey to S3 constructor";
+  if (typeof accessKeyId     !== 'string') throw 'Must pass accessKeyId to S3 constructor';
+  if (typeof secretAccessKey !== 'string') throw 'Must pass secretAcessKey to S3 constructor';
   
-  this.accessKeyId = accessKeyId;
+  this.accessKeyId     = accessKeyId;
   this.secretAccessKey = secretAccessKey;
-  this.options = options | {};
+  this.options         = options | {};
 }
-
-
 
 /* creates bucket in S3
  *
@@ -73,7 +71,6 @@ function S3(accessKeyId, secretAccessKey, options) {
 S3.prototype.createBucket = function (bucket, options) {
   options = options || {}; 
   
-  
   var request = new S3Request(this);
   request.setHttpMethod('PUT');
   
@@ -83,10 +80,10 @@ S3.prototype.createBucket = function (bucket, options) {
   request.setContentType('text/plain');
   
   //support setting of ACL
-  if (typeof options["x-amz-acl"] == 'undefined') {
-    options["x-amz-acl"] = "private";
+  if (typeof options['x-amz-acl'] === 'undefined') {
+    options['x-amz-acl'] = 'private';
   }
-  request.addHeader("x-amz-acl", options["x-amz-acl"]);
+  request.addHeader('x-amz-acl', options['x-amz-acl']);
   
   request.setBucket(bucket);
   
@@ -111,6 +108,49 @@ S3.prototype.deleteBucket = function (bucket, options) {
   request.execute(options);
 };
 
+/**
+ * list-type ex: ?/list-type=2 this is meaning command to take list of objects in bucket.
+ * prefix ex:  ?prefix=/root/hoge this is filtering object by prefix, it's same as path in file system
+ */
+S3.prototype.getObjectNames = function (bucket, prefix, options) {
+  options = options || {};
+
+  var request = new S3Request(this);
+  request.setHttpMethod('GET');
+  request.setBucket(bucket);
+  request.setListType('2');
+  request.setPrefix(prefix);
+  
+  try {
+    var responseBlob = request.execute(options).getBlob();
+  } catch (e) {
+    if (e.name === 'AwsError' && e.code === 'NoSuchKey') {
+      return null;
+    } else {
+      //some other type of error, rethrow
+      throw e; 
+    }
+  }
+  
+  if (responseBlob.getContentType() === 'application/xml') {
+    var rootElements = XmlService.parse(responseBlob.getDataAsString()).getRootElement().getChildren();
+    var objectNames = [];
+    
+    rootElements.forEach(function(rootElement){
+      if (rootElement.getName() === 'Contents') {
+        rootElement.getChildren().forEach(function(content){
+          if (content.getName() === 'Key') {
+            objectNames.push(content.getValue());
+          }
+        });
+      }
+    });
+     
+    return objectNames;
+  }
+  return responseBlob;
+}
+
 /* puts an object into S3 bucket
  * 
  * @param {string} bucket 
@@ -128,14 +168,15 @@ S3.prototype.putObject = function (bucket, objectName, object, options) {
   request.setBucket(bucket);
   request.setObjectName(objectName);
   
-  var failedBlobDuckTest = !(typeof object.copyBlob == 'function' &&
-                      typeof object.getDataAsString == 'function' &&
-                      typeof object.getContentType == 'function'
-                      );
+  var failedBlobDuckTest = !(
+    typeof object.copyBlob        === 'function' &&
+    typeof object.getDataAsString === 'function' &&
+    typeof object.getContentType  === 'function'
+  );
   
   //wrap object in a Blob if it doesn't appear to be one
   if (failedBlobDuckTest) {
-    object = Utilities.newBlob(JSON.stringify(object), "application/json");
+    object = Utilities.newBlob(JSON.stringify(object), 'application/json');
     object.setName(objectName);
   }
   
@@ -164,7 +205,7 @@ S3.prototype.getObject = function (bucket, objectName, options) {
   try {
     var responseBlob = request.execute(options).getBlob();
   } catch (e) {
-    if (e.name == "AwsError" && e.code == 'NoSuchKey') {
+    if (e.name === 'AwsError' && e.code === 'NoSuchKey') {
       return null;
     } else {
       //some other type of error, rethrow
@@ -173,7 +214,7 @@ S3.prototype.getObject = function (bucket, objectName, options) {
   }
   
   //not sure this is better to put here, rather than in S3Request class
-  if (responseBlob.getContentType() == "application/json") {
+  if (responseBlob.getContentType() === 'application/json') {
      return JSON.parse(responseBlob.getDataAsString());
   }
   return responseBlob;
@@ -218,12 +259,12 @@ S3.prototype.getSignedUrl = function(bucket, objectName, options) {
 
   // return request.authenticate(options);
   return request.getSignedUrl(options);
-}
+};
 
 //for debugging
 S3.prototype.getLastExchangeLog = function() {
   return this.lastExchangeLog; 
-}
+};
 
 /*
  * helper to format log entry about HTTP request/response
@@ -232,18 +273,18 @@ S3.prototype.getLastExchangeLog = function() {
  * @param {goog.HTTPResponse} response object, from UrlFetchApp
  */
 S3.prototype.logExchange_ = function(request, response) {
-  var logContent = "";
+  var logContent = '';
   logContent += "\n-- REQUEST --\n";
   for (i in request) {
-    if (typeof request[i] == 'string' && request[i].length > 1000) {
+    if (typeof request[i] === 'string' && request[i].length > 1000) {
       //truncate to avoid making log unreadable
-      request[i] = request[i].slice(0, 1000) + " ... [TRUNCATED]"; 
+      request[i] = request[i].slice(0, 1000) + ' ... [TRUNCATED]'; 
     }
     logContent += Utilities.formatString("\t%s: %s\n", i, request[i]);
   }
     
   logContent += "-- RESPONSE --\n";
-  logContent += "HTTP Status Code: " + response.getResponseCode() + "\n";
+  logContent += 'HTTP Status Code: ' + response.getResponseCode() + "\n";
   logContent += "Headers:\n";
   
   var headers = response.getHeaders();
@@ -252,5 +293,4 @@ S3.prototype.logExchange_ = function(request, response) {
   }
   logContent += "Body:\n" + response.getContentText();
   this.lastExchangeLog = logContent;
-}
-
+};

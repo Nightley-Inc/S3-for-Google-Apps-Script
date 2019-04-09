@@ -2,7 +2,7 @@
 
 //constants
 var SECONDS_PER_DAY = 86400;
-var DEFAULT_REGION = "us-east-1";
+var DEFAULT_REGION = 'us-east-1';
 
 /* constructs an S3Request to an S3 service
  *
@@ -12,11 +12,13 @@ var DEFAULT_REGION = "us-east-1";
 function S3Request(service) {
   this.service = service;
 
-  this.httpMethod = "GET";
-  this.contentType = "";
-  this.content = ""; //content of the HTTP request
-  this.bucket = ""; //gets turned into host (bucketName.s3.amazonaws.com)
-  this.objectName = "";
+  this.httpMethod = 'GET';
+  this.contentType = '';
+  this.content = ''; //content of the HTTP request
+  this.bucket = ''; //gets turned into host (bucketName.s3.amazonaws.com)
+  this.objectName = '';
+  this.listType = '';
+  this.prefix = '';
   this.headers = {};
   
   this.date = new Date();
@@ -28,23 +30,30 @@ function S3Request(service) {
  * @return {S3Request} this request, for chaining
  */
 S3Request.prototype.setContentType = function (contentType) {
-  if (typeof contentType != 'string') throw "contentType must be passed as a string";
+  if (typeof contentType !== 'string') {
+      throw 'contentType must be passed as a string';
+  }
   this.contentType = contentType;
   return this;
 };
 
 S3Request.prototype.getContentType = function () {
   if (this.contentType) {
+    //Browser.msgBox(
+    //  'WARNING',
+    //  'contentType is empty.',
+    //  Browser.Buttons.OK
+    //);
     return this.contentType; 
   } else {
     //if no contentType has been explicitly set, default based on HTTP methods
-    if (this.httpMethod == "PUT" || this.httpMethod == "POST") {
+    if (this.httpMethod === 'PUT' || this.httpMethod === 'POST') {
       //UrlFetchApp defaults to this for these HTTP methods
-      return "application/x-www-form-urlencoded"; 
+      return 'application/x-www-form-urlencoded'; 
     }
   }
-  return "";
-}
+  return '';
+};
 
 
 /* sets content of request
@@ -53,7 +62,9 @@ S3Request.prototype.getContentType = function () {
  * @return {S3Request} this request, for chaining
  */ 
 S3Request.prototype.setContent = function(content) {
-  if (typeof content != 'string') throw "content must be passed as a string"
+  if (typeof content !== 'string') {
+      throw 'content must be passed as a string';
+  }
   this.content = content; 
   return this;
 };
@@ -64,7 +75,7 @@ S3Request.prototype.setContent = function(content) {
  * @return {S3Request} this request, for chaining
  */
 S3Request.prototype.setHttpMethod = function(method) {
-  if (typeof method != 'string') throw "http method must be string";
+  if (typeof method !== 'string') throw 'http method must be string';
   this.httpMethod = method; 
   return this;
 };
@@ -75,8 +86,8 @@ S3Request.prototype.setHttpMethod = function(method) {
  * @return {S3Request} this request, for chaining
  */
 S3Request.prototype.setBucket = function(bucket) {
-  if (typeof bucket != 'string') throw "bucket name must be string";
-  this.bucket = bucket;
+  if (typeof bucket !== 'string') throw 'bucket name must be string';
+  this.bucket = this.fixedEncodeURIComponent(bucket.toLowerCase());
   return this;
 };
 /* sets objectName (key) for request
@@ -85,8 +96,20 @@ S3Request.prototype.setBucket = function(bucket) {
  * @return {S3Request} this request, for chaining
  */
 S3Request.prototype.setObjectName = function(objectName) {
-  if (typeof objectName != 'string') throw "objectName must be string";
-  this.objectName = objectName; 
+  if (typeof objectName !== 'string') throw 'objectName must be string';
+  this.objectName = this.fixedEncodeURIComponent(objectName.toLowerCase()); 
+  return this;
+};
+
+S3Request.prototype.setListType = function(listType) {
+  if (typeof listType !== 'string') throw 'listType must be string';
+  this.listType = this.fixedEncodeURIComponent(listType.toLowerCase()); 
+  return this;
+};
+
+S3Request.prototype.setPrefix = function(prefix) {
+  if (typeof prefix !== 'string') throw 'prefix must be string';
+  this.prefix = this.fixedEncodeURIComponent(prefix.toLowerCase()); 
   return this;
 };
 
@@ -99,8 +122,8 @@ S3Request.prototype.setObjectName = function(objectName) {
  * @return {S3Request} this object, for chaining
  */
 S3Request.prototype.addHeader = function(name, value) {
-  if (typeof name != 'string') throw "header name must be string";
-  if (typeof value != 'string') throw "header value must be string";
+  if (typeof name  !== 'string') throw 'header name must be string';
+  if (typeof value !== 'string') throw 'header value must be string';
   this.headers[name] = value; 
   return this;
 };
@@ -109,8 +132,13 @@ S3Request.prototype.addHeader = function(name, value) {
  * @return {string} url to which request will be sent
  */
 S3Request.prototype.getUrl = function() {
-  return "http://" + this.bucket.toLowerCase() + ".s3.amazonaws.com/" + this.objectName;
+  if ( this.listType != '' ) {
+    return 'https://' + this.bucket + '.s3.amazonaws.com/';
+  } else {
+    return 'https://' + this.bucket + '.s3.amazonaws.com/' + this.objectName;
+  }
 };
+
 /* executes the S3 request and returns HttpResponse
  *
  * Supported options:
@@ -124,30 +152,29 @@ S3Request.prototype.getUrl = function() {
 S3Request.prototype.execute = function(options) {
   options = options || {};
   
-  this.headers.Authorization = this.getAuthHeader_();
-  this.headers.Date = this.date.toUTCString();
-  if (this.content.length > 0) {
-    this.headers["Content-MD5"] = this.getContentMd5_();
-  }
+  //this.headers.Authorization = this.getAuthHeader_();
   
   var params = {
     method: this.httpMethod,
     payload: this.content,
     headers: this.headers,
     muteHttpExceptions: true //get error content in the response
-  }
+  };
 
-  //only add a ContentType header if non-empty (although should be OK either way)
+  // only add a ContentType header if non-empty (although should be OK either way)
   if (this.getContentType()) {
     params.contentType = this.getContentType();
   }
   
-  var response = UrlFetchApp.fetch(this.getUrl(), params);
-
+  //var response = UrlFetchApp.fetch(this.getUrl(), params);
+  // TODO: under checking, may be getUrl()
+  var response = UrlFetchApp.fetch(this.getSignedUrl({}), params);
 
   
-  //debugging stuff
-  var request = UrlFetchApp.getRequest(this.getUrl(), params);  
+  // debugging stuff
+  // TODO: under checking, may be getUrl()
+  //var request = UrlFetchApp.getRequest(this.getUrl(), params);  
+  var request = UrlFetchApp.getRequest(this.getSignedUrl({}), params);  
 
 
   //Log request and response
@@ -158,14 +185,14 @@ S3Request.prototype.execute = function(options) {
   
   //used in case you want to peak at the actual raw HTTP request coming out of Google's UrlFetchApp infrastructure
   if (options.echoRequestToUrl) {
-    UrlFetchApp.fetch(options.echoRequestToUrl, params); 
+    UrlFetchApp.fetch(options.echoRequestToUrl, params);
   }
   
   //check for error codes (AWS uses variants of 200s for flavors of success)
   if (response.getResponseCode() > 299) {
     //convert XML error response from AWS into JS object, and give it a name
     var error = {};
-    error.name = "AwsError";
+    error.name = 'AwsError';
     try {
       var errorXmlElements = XmlService.parse(response.getContentText()).getRootElement().getChildren();
     
@@ -174,13 +201,13 @@ S3Request.prototype.execute = function(options) {
         name = name.charAt(0).toLowerCase() + name.slice(1);
         error[name] = errorXmlElements[i].getText();
       }
-      error.toString = function() { return "AWS Error - "+this.code+": "+this.message; }; 
-     
+      error.toString = function() { return 'AWS Error - ' + this.code + ': ' + this.message; };
+      
       error.httpRequestLog = this.service.getLastExchangeLog();
     } catch (e) {
       //error parsing XML error response from AWS (will obscure actual error)
  
-      error.message = "AWS returned HTTP code " + response.getResponseCode() + ", but error content could not be parsed."
+      error.message = 'AWS returned HTTP code ' + response.getResponseCode() + ', but error content could not be parsed.';
       
       error.toString = function () { return this.message; };
       
@@ -200,21 +227,18 @@ S3Request.prototype.execute = function(options) {
  * @return {string} the URL
  */ 
 S3Request.prototype.getSignedUrl = function(options) {
-  var url = this.getUrl();
-  var accessKeyId = this.service.accessKeyId;
+  options['expires'] = options['expires'] || SECONDS_PER_DAY; // default to one day.
   
-  options["expires"] = options["expires"] || SECONDS_PER_DAY; // default to one day.
-  if (options["expires"] < 1 || options["expires"] > 7*SECONDS_PER_DAY) {
+  if ( options['expires'] < 1 || options['expires'] > 7 * SECONDS_PER_DAY ) {
     throw new "'expires' option must be within 1 and 604800 seconds (7 days), inclusive";
   }
   
-  var url = this.authenticate(options, "url");
-
+  var url = this.authenticate(options, 'url');
   return url;
 };
 
 /* authenticate a request using query parameters according to
- * AWS Signature Version 4
+ * AWS Signature Version 4 
  * @author David Su <david.d.su@gmail.com>
  *
  * @param {Object} options options to be passed in ("expires", "testing")
@@ -233,53 +257,57 @@ S3Request.prototype.authenticate = function(options, mode) {
   // &X-Amz-SignedHeaders=host
   // &X-Amz-Signature=<signature-value> 
 
-  var canonicalRequest = "";
+  var canonicalRequest = '';
 
   //    i. HTTP verb
   canonicalRequest += this.httpMethod + "\n";
 
   //    ii. Canonical URI
-  var canonicalizedResource = this.getUrl().replace("http://"+this.bucket.toLowerCase()+".s3.amazonaws.com","");
-  canonicalizedResource = encodeURIComponent(canonicalizedResource).replace(/%2F/g, "/");
+  if (this.listType != '') {
+    var canonicalizedResource = '/';
+  } else {
+    var canonicalizedResource = '/' + this.objectName;
+  }
+  canonicalizedResource = canonicalizedResource.replace(/%2F/g, '/');
   canonicalRequest += canonicalizedResource + "\n";
 
   //    iii. Canonical Query String
   
   //          - algorithm
-  var amzAlgorithm = "AWS4-HMAC-SHA256";
+  var amzAlgorithm = 'AWS4-HMAC-SHA256';
   
-  var canonicalQueryString = "X-Amz-Algorithm=" + amzAlgorithm;
+  var canonicalQueryString = 'X-Amz-Algorithm=' + amzAlgorithm;
 
   //          - credentials
   var date = new Date();
-  if ("signatureTesting" in options && options.signatureTesting == true) {
-      date = new Date(Date.UTC("2013", "04", "24")); // testing with default
+  if ('signatureTesting' in options && options.signatureTesting === true) {
+      date = new Date(Date.UTC('2013', '04', '24')); // testing with default
   }
-  var dateStr = date.getUTCFullYear() + ("0" + (date.getUTCMonth()+1) ).slice(-2) + ("0" + date.getUTCDate()).slice(-2)
+  var dateStr = date.getUTCFullYear() + ('0' + (date.getUTCMonth()+1) ).slice(-2) + ('0' + date.getUTCDate()).slice(-2);
   
   var region = options.region || DEFAULT_REGION;
   
-  var amzCredentialParts = [this.service.accessKeyId, dateStr, region, "s3", "aws4_request"];
+  var amzCredentialParts = [this.service.accessKeyId, dateStr, region, 's3', 'aws4_request'];
   
-  canonicalQueryString += "&X-Amz-Credential=" + amzCredentialParts.join("%2F");
+  canonicalQueryString += '&X-Amz-Credential=' + amzCredentialParts.join('%2F');
 
   //          - date
-  var timeStr = ("0" + date.getUTCHours()).slice(-2) + ("0" + date.getUTCMinutes()).slice(-2) + ("0" + date.getUTCSeconds()).slice(-2);
-  var timestamp = dateStr + "T" + timeStr + "Z"; // utc
-  canonicalQueryString += "&X-Amz-Date=" + timestamp;
+  var timeStr = ('0' + date.getUTCHours()).slice(-2) + ('0' + date.getUTCMinutes()).slice(-2) + ('0' + date.getUTCSeconds()).slice(-2);
+  var timestamp = dateStr + 'T' + timeStr + 'Z'; // utc
+  canonicalQueryString += '&X-Amz-Date=' + timestamp;
 
 
   //          - expires
   var expires = 86400; // 24 hours
-  if (options.hasOwnProperty("expires")) {
+  if (options.hasOwnProperty('expires')) {
     expires = options.expires;
   }
-  canonicalQueryString += "&X-Amz-Expires=" + expires;
+  canonicalQueryString += '&X-Amz-Expires=' + expires;
 
 
   //          - signed headers
-  var amzHeaders = ["host:" + this.bucket.toLowerCase()+".s3.amazonaws.com"]; //, "x-amz-date:" + timestamp];
-  var signedHeaders = ["host"]; //, "x-amz-date"];
+  var amzHeaders = ['host:' + this.bucket + '.s3.amazonaws.com']; //, "x-amz-date:" + timestamp];
+  var signedHeaders = ['host']; //, "x-amz-date"];
 
   for (var headerName in this.headers) {
     // only AMZ headers
@@ -287,29 +315,41 @@ S3Request.prototype.authenticate = function(options, mode) {
     // multi-line headers to single line (4)
     // one space after : (5)
     if (headerName.match(/^x-amz/i)) {
-      var header = headerName.toLowerCase() + ":" + this.headers[headerName].trim();
+      var header = headerName.toLowerCase() + ':' + this.headers[headerName].trim();
       amzHeaders.push(header);
       signedHeaders.push(headerName.toLowerCase());
     }
   }
 
+  this.headers = amzHeaders.sort();
   var canonicalHeaderStr = amzHeaders.sort().join("\n") + "\n";
-  canonicalQueryString += "&X-Amz-SignedHeaders=" + signedHeaders.sort().join(";"); // <- TODO: figure out if this is the right delimiter
+    
+  canonicalQueryString += '&X-Amz-SignedHeaders=' + signedHeaders.sort().join('%3B'); // <- TODO: figure out if this is the right delimiter
+
+  // NonCapital Params must be put after capital name parameters.
+  if (this.listType != '') {
+    canonicalQueryString += '&list-type=' + this.listType;
+    if (this.prefix != '') {
+      canonicalQueryString += '&prefix=' + this.prefix;
+    }
+  }
+
+  //Logger.log(canonicalQueryString);
 
   canonicalRequest += canonicalQueryString + "\n";
 
   //    iv. Canonical Headers
   canonicalRequest += canonicalHeaderStr + "\n";
-  canonicalRequest +=  "\n"; // <- TODO: figure out what to put here 
 
   //    v. Signed Headers
-  canonicalRequest += signedHeaders.sort().join(";") + "\n";
+  canonicalRequest += signedHeaders.sort().join('%3B') + "\n";
 
   //    vi. Unsigned Payload
-  canonicalRequest += "UNSIGNED-PAYLOAD";
+  //canonicalRequest += CryptoJS.HmacSHA256('', signingKey, { asBytes: true }).toString(16).toLowerCase(); //"UNSIGNED-PAYLOAD";
+  canonicalRequest += 'UNSIGNED-PAYLOAD';
   
   // 1b. StringToSign
-  var stringToSign = "";
+  var stringToSign = '';
 
   // algorithm
   stringToSign += amzAlgorithm + "\n";
@@ -318,7 +358,7 @@ S3Request.prototype.authenticate = function(options, mode) {
   stringToSign += timestamp + "\n";
 
   // scope
-  stringToSign += dateStr + "/" + region + "/" + "s3" + "/" + "aws4_request" + "\n";
+  stringToSign += dateStr + '/' + region + '/s3/aws4_request' + "\n";
 
   // hexed and hashed
   var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, canonicalRequest, Utilities.Charset.UTF_8);
@@ -337,20 +377,16 @@ S3Request.prototype.authenticate = function(options, mode) {
   // var signingKey = this.unsignBytearray_(Utilities.computeHmacSha256Signature("aws4_request", dateRegionServiceKey, Utilities.Charset.UTF_8));
   // Logger.log("SigningKey:\n" + this.bytearrayToHex_(signingKey));
 
-  var signingKey = this.getSignatureKey_(this.service.secretAccessKey, dateStr, region, "s3");
+  var signingKey = this.getSignatureKey_(this.service.secretAccessKey, dateStr, region, 's3');
 
 
   // 3. Signature
-
   var signature = CryptoJS.HmacSHA256(stringToSign, signingKey, { asBytes: true });
   
-  if (mode == "signature") {
+  if (mode === 'signature') {
     return signature;
   }
-
-  var url = this.getUrl();
-  url += "?" + canonicalQueryString
-  url += "&X-Amz-Signature=" + signature;
+  var url = this.getUrl() + '?' + canonicalQueryString + '&X-Amz-Signature=' + signature;
 
   url = url.replace(/ /g, "%20");
 
@@ -366,15 +402,15 @@ S3Request.prototype.authenticate = function(options, mode) {
  * @return {string} the hex-encoded string
  */
 S3Request.prototype.bytearrayToHex_ = function(byteArr) {
-  var hexStr = "";
+  var hexStr = '';
   for (var i=0; i<byteArr.length; i++) {
     var b = byteArr[i];
     if (b < 0) {
       b += 256;
     }
     var bStr = b.toString(16);
-    if (bStr.length == 1) {
-      bStr = "0" + bStr;
+    if (bStr.length === 1) {
+      bStr = '0' + bStr;
     }
     hexStr += bStr;
   }
@@ -409,10 +445,10 @@ S3Request.prototype.unsignBytearray_ = function(byteArr) {
  * @return {string} base64-encoded signing key
  */
 S3Request.prototype.getSignatureKey_ = function(key, dateStamp, regionName, serviceName) {
-   var kDate = CryptoJS.HmacSHA256(dateStamp, "AWS4" + key, { asBytes: true})
-   var kRegion = CryptoJS.HmacSHA256(regionName, kDate, { asBytes: true });
+   var kDate    = CryptoJS.HmacSHA256(dateStamp, 'AWS4' + key, { asBytes: true });
+   var kRegion  = CryptoJS.HmacSHA256(regionName, kDate, { asBytes: true });
    var kService = CryptoJS.HmacSHA256(serviceName, kRegion, { asBytes: true });
-   var kSigning = CryptoJS.HmacSHA256("aws4_request", kService, { asBytes: true });
+   var kSigning = CryptoJS.HmacSHA256('aws4_request', kService, { asBytes: true });
 
    return kSigning;
 };
@@ -425,9 +461,9 @@ S3Request.prototype.getSignatureKey_ = function(key, dateStamp, regionName, serv
  */
 S3Request.prototype.getAuthHeader_ = function () {
     
-  var signature = this.authenticate({}, "signature");
+  var signature = this.authenticate({}, 'signature');
       
-  return "AWS " + this.service.accessKeyId + ':' + signature; 
+  return 'AWS ' + this.service.accessKeyId + ':' + signature; 
 };
 
 /* calculates Md5 for the content (http request body) of the S3 request
@@ -440,6 +476,12 @@ S3Request.prototype.getContentMd5_ = function() {
   if (this.content.length > 0) {
     return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, this.content, Utilities.Charset.UTF_8));
   } else {
-    return ""; 
+    return ''; 
   }
 };
+
+S3Request.prototype.fixedEncodeURIComponent = function(str) {
+  return encodeURIComponent(str).replace(/[!'()*]/g, function(c) {
+    return '%' + c.charCodeAt(0).toString(16);
+  });
+}

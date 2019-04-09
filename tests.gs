@@ -7,9 +7,11 @@
  *
  */
 
-
-/** @const {string} name of test bucket (remember all S3 buckets must be GLOBALLY unique) **/
-var bucketName_ = "S3LibraryTestBucket";
+/**
+ * @const {string} name of test bucket
+ * (remember all S3 buckets must be GLOBALLY unique)
+*/
+var bucketName_ = 'S3LibraryTestBucket';
 
 /**
  * DEMO FUNCTIONS - useful for debugging; commented out to not clutter tab-completion list
@@ -51,36 +53,37 @@ var bucketName_ = "S3LibraryTestBucket";
  *  shouldn't be in a public script file)
  */
 function runTests() {
-  Logger.log("START tests. should end with ALL TESTS PASSED.");
-  var env = getTestEnv();
-  var service = new S3(env.awsAccessKeyId, env.awsSecretKey);
-  var objectName = "objectFoo";
-  var blobObjectName = "blobtest";
-  var options = {
+  Logger.log('START tests. should end with ALL TESTS PASSED.');
+  var env            = getTestEnv();
+  var service        = new S3(env.awsAccessKeyId, env.awsSecretKey, {region: 'ap-northeast-1'});
+  var objectName     = 'objectFoo';
+  var blobObjectName = 'blobtest';
+  var options        = {
 //    logRequests:true
   };
   
-  //clean up existing object, bucket if exist
+  // clean up existing object, bucket if exist
+  
   try {
     service.deleteObject(bucketName_, objectName, options);
   } catch (e) {
     Logger.log(e);
   }
-  
+
   try {
     service.deleteObject(bucketName_, blobObjectName, options);
   } catch (e) {
     Logger.log(e); 
   }
-  try {
-    service.deleteBucket(bucketName_, options);
-  } catch (e) {
-    Logger.log(e);
-  }
-  
- 
-  //get object from non-existent bucket (should fail)
 
+// get object from non-existent bucket (should fail) 
+// **** if bucket is not find, then, this test will fail by authentification error and failed test ****
+//  try {
+//    service.deleteBucket(bucketName_, options);
+//  } catch (e) {
+//    Logger.log(e);
+//  } 
+  
   var checkExpectedError = function (expectedErrorCode, e) {
     Logger.log("caught exception: %s", e.toString());
     if (e.name == 'AwsError' && e.code == expectedErrorCode) {
@@ -92,11 +95,12 @@ function runTests() {
     }
   };
   
+  // get object from non-existent bucket (should fail)  
   var fail = false;  
   try {
     var r = service.getObject(bucketName_, objectName, options);
   } catch (e) {
-    fail = checkExpectedError("NoSuchBucket", e);
+    fail = checkExpectedError('NoSuchBucket', e);
   }
   if (!fail) {
     throw "request to get object from non-existent bucket succeeded; wtf";      
@@ -107,61 +111,75 @@ function runTests() {
   //put object into non-existent bucket (should fail)
   var fail = false;
   try {
-    service.putObject(bucketName_, objectName, "blah", options);
+    service.putObject(bucketName_, objectName, 'blah', options);
   } catch (e) {
-    fail = checkExpectedError("NoSuchBucket", e);
+    fail = checkExpectedError('NoSuchBucket', e);
   }
-  if (!fail) {
-     throw "request to put object into non-existing bucket succeeded; wtf"; 
+  if ( ! fail) {
+    throw 'request to put object into non-existing bucket succeeded; wtf'; 
   }
-  Logger.log("PASSED put object into non-existent bucket");
+  Logger.log('PASSED put object into non-existent bucket');
  
   //delete non-existent bucket
   var fail = false;
+
   try {
     service.deleteBucket(bucketName_, options); 
   } catch (e) {
-    fail = checkExpectedError("NoSuchBucket", e);  
+    fail = checkExpectedError('NoSuchBucket', e);  
   }
+
   if (!fail) {
-     throw "request to delete non-existent bucket succeeded; wtf"; 
-  }  
-  Logger.log("PASSED delete non-existent bucket");
+     throw 'request to delete non-existent bucket succeeded; wtf'; 
+  }
+  Logger.log('PASSED delete non-existent bucket');
  
   //create a bucket
   service.createBucket(bucketName_, options);
-  Logger.log("PASSED create bucket");
+  Logger.log('PASSED create bucket');
   
   //get non-existent object from existing bucket (should return null)
   var r = service.getObject(bucketName_, objectName, options);
   if (r !== null) {
-    throw "found object that should not exist";
+    throw 'found object that should not exist';
   } 
-  Logger.log("PASSED get non-existent object from existing bucket");
+  Logger.log('PASSED get non-existent object from existing bucket');
   
   //put object into bucket
-  var content = "blah";
+  var content = 'blah';
   service.putObject(bucketName_, objectName, content, options);
-  Logger.log("PASSED put object");
+  Logger.log('PASSED put object');
   
   
   //get object
   var r = service.getObject(bucketName_, objectName, options);
   if (r !== content) {
-    throw "S3 object content does not match what was put in";
+    throw 'S3 object content does not match what was put in';
   }
-  Logger.log("PASSED get object");
+  Logger.log('PASSED get object');
   
   
   //put/get a Blob, to make sure deals w this OK
-  var blob = UrlFetchApp.fetch("http://www.google.com").getBlob();
+  var blob = UrlFetchApp.fetch('http://www.google.com').getBlob();
   service.putObject(bucketName_, blobObjectName, blob, options);
   var retrievedBlob = service.getObject(bucketName_, blobObjectName, options);
-  if (!(retrievedBlob.getContentType() ==  blob.getContentType() && 
+  if (!(retrievedBlob.getContentType() == blob.getContentType() && 
       retrievedBlob.getDataAsString() == blob.getDataAsString())) {
-    throw "test to set html Blob into S3 and retrieve it failed"; 
+    throw 'test to set html Blob into S3 and retrieve it failed';
   }
-  Logger.log("PASSED put/get Blob object");
+  Logger.log('PASSED put/get Blob object');
   
   Logger.log("-------------\nALL TESTS PASSED");
+}
+
+function checkExpectedError(expectedErrorCode, e)
+{
+  Logger.log('caught exception: %s', e.toString());
+  if (e.name == 'AwsError' && e.code == expectedErrorCode) {
+    Logger.log('expected error occurred');
+    return true;
+  } else { 
+    Logger.log('An error occurred, but not the expected one'); 
+    throw e;
+  }
 }

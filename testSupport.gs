@@ -1,5 +1,5 @@
 /** @define {string} */
-var TEST_ENV_NAME_ = "S3LibraryTestEnv";
+var TEST_ENV_NAME_ = 'S3LibraryTestEnv';
 
 // todo: consider splitting into a generic testing lib?
 
@@ -11,7 +11,7 @@ var TEST_ENV_NAME_ = "S3LibraryTestEnv";
  */
 function setTestEnv(env) {
   var userProperties = PropertiesService.getUserProperties();
-  userProperties.setProperty(TEST_ENV_NAME_, JSON.stringify(env))
+  userProperties.setProperty(TEST_ENV_NAME_, JSON.stringify(env));
   //just to this to check
   var env = getTestEnv();
 }
@@ -25,16 +25,16 @@ function setTestEnv(env) {
 function getTestEnv(skipEnvValidation) {
   var propertiesService = PropertiesService.getUserProperties();
   Logger.log(propertiesService.getProperty);
-  var env = JSON.parse(propertiesService.getProperty(TEST_ENV_NAME_)) 
+  var env = JSON.parse(propertiesService.getProperty(TEST_ENV_NAME_));
   if (!skipEnvValidation) {
-    var requiredKeys = ["awsAccessKeyId", "awsSecretKey"];
+    var requiredKeys = ['awsAccessKeyId', 'awsSecretKey'];
     
-    if (env == null) {
-      throw "Must set environment in UserProperties (see setTestEnvFromUI)"; 
+    if (env === null) {
+      throw 'Must set environment in UserProperties (see setTestEnvFromUI)'; 
     }
   
     for (var i=0, len=requiredKeys.length; i < len; i++) {
-      if (typeof env[requiredKeys[i]] == 'undefined') {
+      if (typeof env[requiredKeys[i]] === 'undefined') {
         throw "Test Environment is missing required property '" + requiredKeys[i] + "'.  Define it object passed to setTestEnv().";
       }
     }
