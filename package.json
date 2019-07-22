@@ -1,0 +1,38 @@
+{
+  "name": "s3-for-google-apps-script",
+  "version": "1.0.0",
+  "description": "An API binding for using AWS Simple Storage Service (S3) from Google Apps Script.",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "node_modules/.bin/jest -w 2",
+    "build": "node_modules/.bin/parcel build -o dist/index.js ./src/index.js",
+    "dev": "node_modules/.bin/parcel watch -o dist/index.js ./src/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nightley-Inc/S3-for-Google-Apps-Script.git"
+  },
+  "keywords": [],
+  "author": "Shohei Ohta <shohei.ot@gmail.com> (https://qiita.com/shohei_ot)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Nightley-Inc/S3-for-Google-Apps-Script/issues"
+  },
+  "typings": "types/index.d.ts",
+  "homepage": "https://github.com/Nightley-Inc/S3-for-Google-Apps-Script#readme",
+  "dependencies": {
+    "crypto-js": "^3.1.9-1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.5.5",
+    "@babel/plugin-transform-modules-commonjs": "^7.5.0",
+    "@babel/preset-env": "^7.5.5",
+    "@babel/preset-typescript": "^7.3.3",
+    "@types/google-apps-script": "0.0.54",
+    "@types/jest": "^24.0.15",
+    "babel-jest": "^24.8.0",
+    "jest": "^24.8.0",
+    "parcel-bundler": "^1.12.3",
+    "typescript": "^3.5.3"
+  }
+}
