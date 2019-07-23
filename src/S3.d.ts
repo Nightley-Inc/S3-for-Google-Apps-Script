@@ -9,7 +9,7 @@ export declare function getInstance(accessKeyId: string, secretAccessKey: string
 interface S3 {
   createBucket(bucket:string, options?: S3CreateBucketOptions): void
   deleteBucket(bucket: string, options?: S3RequestExecuteOptions): void
-  putObject(bucket:string, objectName:string, object:string, options?: S3RequestExecuteOptions): void
+  putObject(bucket:string, objectName:string, object: GoogleAppsScript.Base.Blob, options?: S3RequestExecuteOptions): void
   getObject(bucket: string, objectName:string, options?: S3RequestExecuteOptions): {[x:string]:any} | GoogleAppsScript.Base.Blob
   deleteObject(bucket:string,objectName:string,options?:S3RequestExecuteOptions): void
   getObjectNames(bucket: string, prefix: string, options?: S3RequestExecuteOptions): string[] | null | GoogleAppsScript.Base.Blob

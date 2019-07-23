@@ -157,7 +157,7 @@ S3.prototype.getObjectNames = function (bucket, prefix, options) {
  *
  * @param {string} bucket
  * @param {string} objectName name to uniquely identify object within bucket
- * @param {string} object byte sequence that is object's content
+ * @param {GoogleAppsScript.Base.Blob} object byte sequence that is object's content
  * @param {Object} options optional parameters
  * @throws {Object} AwsError on failure
  * @return void
