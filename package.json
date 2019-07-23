@@ -1,6 +1,6 @@
 {
   "name": "s3-for-google-apps-script",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "An API binding for using AWS Simple Storage Service (S3) from Google Apps Script.",
   "main": "dist/index.js",
   "scripts": {
